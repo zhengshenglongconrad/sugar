@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional Solubility Lab: Hover & High-Density Grid</title>
+    <style>
+        :root {
+            --sugar-orange: #ff7800;
+            --water-blue: rgba(173, 216, 230, 0.6);
+            --grain-color: #ffffff;
+            --crystal-color: rgba(255, 255, 255, 0.9);
+            --hover-line: rgba(0, 0, 0, 0.3);
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #eceff1; margin: 20px; }
+        .main-container { display: flex; gap: 20px; max-width: 1400px; margin: 0 auto; align-items: stretch; }
+        .card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); flex: 1; }
+        
+        h3 { margin-top: 0; color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .control-group { margin-bottom: 20px; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; color: #555; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .val-tag { float: right; color: var(--sugar-orange); font-weight: bold; }
+        
+        button { 
+            width: 100%; padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; 
+            cursor: pointer; transition: all 0.2s; margin-bottom: 10px;
+        }
+        #prepareBtn { background: #607d8b; color: white; }
+        #prepareBtn:hover { background: #455a64; }
+        #playBtn { background: #4caf50; color: white; }
+        #playBtn:disabled { background: #e0e0e0; cursor: not-allowed; }
+        #resetBtn { background: #f44336; color: white; }
+
+        .stats { background: #fffde7; padding: 15px; border-radius: 8px; border-left: 5px solid #ffd54f; font-family: monospace; font-size: 0.95em; }
+        
+        /* Beaker Visuals */
+        .beaker-container { position: relative; width: 180px; height: 240px; margin: 30px auto; }
+        .beaker-glass { 
+            position: absolute; bottom: 0; width: 100%; height: 100%; 
+            border: 5px solid #999; border-top: none; border-radius: 0 0 15px 15px; z-index: 5; pointer-events: none;
+        }
+        .water-fill { 
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 80%; 
+            background: var(--water-blue); z-index: 1; transition: background 1s;
+        }
+        #particle-box { position: absolute; bottom: 0; width: 100%; height: 80%; z-index: 3; overflow: hidden; }
+        
+        .grain { position: absolute; background: var(--grain-color); width: 4px; height: 4px; border-radius: 1px; z-index: 3; }
+        .crystal {
+            position: absolute; background: var(--crystal-color);
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            border: 1px solid rgba(0,0,0,0.1); transform: scale(0);
+            animation: grow 0.6s forwards ease-out; z-index: 4;
+        }
+        @keyframes grow { to { transform: scale(1) rotate(var(--r)); } }
+
+        /* Graph Styles */
+        #graph-card { flex: 1.8; position: relative; }
+        svg { width: 100%; height: auto; display: block; cursor: crosshair; }
+        .axis-label { font-size: 14px; fill: #444; font-weight: bold; }
+        .grid-line-major { stroke: #ccc; stroke-width: 1; }
+        .grid-line-minor { stroke: #eee; stroke-width: 0.5; }
+        .sol-path { stroke: var(--sugar-orange); stroke-width: 4; fill: none; }
+        #marker-dot { fill: red; stroke: white; stroke-width: 2; }
+        
+        /* Hover Elements */
+        #hover-group line { stroke: var(--hover-line); stroke-width: 1; stroke-dasharray: 2; pointer-events: none; }
+        .hover-tag { fill: #333; font-size: 12px; font-family: monospace; font-weight: bold; pointer-events: none; }
+        #hover-bg-x, #hover-bg-y { fill: #f0f0f0; stroke: #999; rx: 3; }
+    </style>
+</head>
+<body>
+
+<h1 style="text-align:center; color: #2c3e50;">Sugar Solubility Interactive Lab</h1>
+
+<div class="main-container">
+
+    <div class="card">
+        <h3>1. Setup</h3>
+        <div class="control-group">
+            <label>Temp (°C) <span class="val-tag" id="tDisp">80°C</span></label>
+            <input type="range" id="tInput" min="25" max="100" value="80">
+        </div>
+        <div class="control-group">
+            <label>Sugar (g) <span class="val-tag" id="mDisp">450g</span></label>
+            <input type="range" id="mInput" min="0" max="500" value="450">
+        </div>
+        <button id="prepareBtn">Mix & Heat</button>
+        
+        <h3>2. Action</h3>
+        <button id="playBtn" disabled>▶ Cool to 25°C</button>
+        <button id="resetBtn">Reset Lab</button>
+
+        <div class="stats">
+            <strong>Data Stream:</strong><br>
+            Temp: <span id="curT">--</span>°C<br>
+            Solubility: <span id="curSol">--</span>g<br>
+            <hr style="border:0; border-top:1px solid #ddd">
+            <span style="color:green">Dissolved: <span id="curDiss">--</span>g</span><br>
+            <span style="color:#7f8c8d">Grains (Bottom): <span id="grainMassText">0.0</span>g</span><br>
+            <span style="color:var(--sugar-orange)">Crystals (New): <span id="crysMassText">0.0</span>g</span>
+        </div>
+    </div>
+
+    <div class="card" style="text-align:center;">
+        <h3>Lab Beaker</h3>
+        <div id="tempReadout" style="font-size: 26px; font-weight: bold; color: #666;">--°C</div>
+        <div class="beaker-container">
+            <div class="beaker-glass"></div>
+            <div class="water-fill" id="water"></div>
+            <div id="particle-box"></div>
+        </div>
+        <p style="font-size: 13px; color: #7f8c8d;" id="statusMsg">Prepare solution to start.</p>
+    </div>
+
+    <div class="card" id="graph-card">
+        <h3>Interactive Solubility Curve</h3>
+        <p style="font-size: 11px; color: #999; margin: 0;">Hover over the graph to see precise coordinates.</p>
+        <svg viewBox="0 0 520 450" id="graph-svg">
+            <g id="grid"></g>
+            <path id="curve" class="sol-path" d=""></path>
+            
+            <g id="hover-group" style="visibility: hidden;">
+                <line id="hover-v" x1="0" y1="40" x2="0" y2="400" />
+                <line id="hover-h" x1="60" y1="0" x2="480" y2="0" />
+                
+                <rect id="hover-bg-x" width="40" height="18" y="405" />
+                <text id="hover-text-x" class="hover-tag" y="418" text-anchor="middle">0</text>
+                
+                <rect id="hover-bg-y" width="35" height="18" x="20" />
+                <text id="hover-text-y" class="hover-tag" x="52" text-anchor="end">0</text>
+            </g>
+
+            <g id="marker-group" style="visibility: hidden;">
+                <line id="guide-x" x1="0" y1="0" x2="0" y2="400" stroke="red" stroke-dasharray="4" />
+                <circle id="marker-dot" r="6" />
+                <text id="tip-text" x="15" y="-12" font-size="11" font-family="monospace" font-weight="bold" fill="red">LIVE</text>
+            </g>
+
+            <text x="270" y="445" class="axis-label" text-anchor="middle">Temperature (°C)</text>
+            <text x="15" y="220" class="axis-label" transform="rotate(-90 15 220)" text-anchor="middle">Grams per 100ml Water</text>
+        </svg>
+    </div>
+
+</div>
+
+<script>
+    const ROOM_TEMP = 25;
+    const getSol = (T) => 0.0163 * (T**2) + 1.2581 * T + 179.37;
+    const mapX = (T) => 60 + (T * 4.2);
+    const mapY = (G) => 400 - (G * 0.72); // Adjusted for grid fit
+    const revX = (x) => (x - 60) / 4.2;
+    const revY = (y) => (400 - y) / 0.72;
+
+    let state = { targetT: 80, addedM: 450, currentT: 80, initialGrainMass: 0, timer: null };
+
+    // Initialize Dense Grid
+    const grid = document.getElementById('grid');
+    // Vertical lines every 10 degrees
+    for(let i=0; i<=100; i+=10) {
+        let isMajor = i % 20 === 0;
+        grid.innerHTML += `<line x1="${mapX(i)}" y1="40" x2="${mapX(i)}" y2="400" class="${isMajor?'grid-line-major':'grid-line-minor'}" />`;
+        if(isMajor) grid.innerHTML += `<text x="${mapX(i)}" y="418" font-size="12" text-anchor="middle" fill="#666">${i}</text>`;
+    }
+    // Horizontal lines every 50 grams
+    for(let i=0; i<=500; i+=50) {
+        let isMajor = i % 100 === 0;
+        grid.innerHTML += `<line x1="60" y1="${mapY(i)}" x2="480" y2="${mapY(i)}" class="${isMajor?'grid-line-major':'grid-line-minor'}" />`;
+        if(isMajor) grid.innerHTML += `<text x="55" y="${mapY(i)+5}" font-size="12" text-anchor="end" fill="#666">${i}</text>`;
+    }
+
+    // Draw Curve
+    let pathD = `M ${mapX(0)} ${mapY(getSol(0))}`;
+    for(let t=1; t<=100; t++) pathD += ` L ${mapX(t)} ${mapY(getSol(t))}`;
+    document.getElementById('curve').setAttribute('d', pathD);
+
+    // Hover Logic
+    const svg = document.getElementById('graph-svg');
+    const hoverGroup = document.getElementById('hover-group');
+    const hoverV = document.getElementById('hover-v');
+    const hoverH = document.getElementById('hover-h');
+    const hoverTX = document.getElementById('hover-text-x');
+    const hoverTY = document.getElementById('hover-text-y');
+    const hoverBGX = document.getElementById('hover-bg-x');
+    const hoverBGY = document.getElementById('hover-bg-y');
+
+    svg.addEventListener('mousemove', (e) => {
+        const CTM = svg.getScreenCTM();
+        const pt = svg.createSVGPoint();
+        pt.x = e.clientX; pt.y = e.clientY;
+        const loc = pt.matrixTransform(CTM.inverse());
+
+        if(loc.x >= 60 && loc.x <= 480 && loc.y >= 40 && loc.y <= 400) {
+            hoverGroup.style.visibility = 'visible';
+            const temp = revX(loc.x);
+            const grams = revY(loc.y);
+
+            hoverV.setAttribute('x1', loc.x); hoverV.setAttribute('x2', loc.x);
+            hoverH.setAttribute('y1', loc.y); hoverH.setAttribute('y2', loc.y);
+            
+            hoverTX.textContent = Math.round(temp);
+            hoverTX.setAttribute('x', loc.x);
+            hoverBGX.setAttribute('x', loc.x - 20);
+
+            hoverTY.textContent = Math.round(grams);
+            hoverTY.setAttribute('y', loc.y + 5);
+            hoverBGY.setAttribute('y', loc.y - 9);
+        } else {
+            hoverGroup.style.visibility = 'hidden';
+        }
+    });
+
+    svg.addEventListener('mouseleave', () => hoverGroup.style.visibility = 'hidden');
+
+    // Control Handlers
+    document.getElementById('tInput').oninput = (e) => {
+        state.targetT = parseInt(e.target.value);
+        document.getElementById('tDisp').innerText = state.targetT + "°C";
+    };
+    document.getElementById('mInput').oninput = (e) => {
+        state.addedM = parseInt(e.target.value);
+        document.getElementById('mDisp').innerText = state.addedM + "g";
+    };
+
+    document.getElementById('prepareBtn').onclick = () => {
+        state.currentT = state.targetT;
+        clearInterval(state.timer);
+        document.getElementById('particle-box').innerHTML = ''; 
+        const startSolLimit = getSol(state.currentT);
+        state.initialGrainMass = Math.max(0, state.addedM - startSolLimit);
+        update(); 
+        document.getElementById('playBtn').disabled = (state.currentT <= ROOM_TEMP);
+        document.getElementById('marker-group').style.visibility = 'visible';
+        
+        statusMsg.innerText = state.initialGrainMass > 0 ? "Saturated: Initial grains at bottom." : "Unsaturated: All sugar dissolved.";
+    };
+
+    document.getElementById('playBtn').onclick = () => {
+        document.getElementById('playBtn').disabled = true;
+        state.timer = setInterval(() => {
+            if(state.currentT > ROOM_TEMP) {
+                state.currentT -= 0.5;
+                update();
+            } else {
+                clearInterval(state.timer);
+                statusMsg.innerText = "Cooling complete.";
+            }
+        }, 50);
+    };
+
+    document.getElementById('resetBtn').onclick = () => location.reload();
+
+    function update() {
+        const solLimit = getSol(state.currentT);
+        const totalSolidMass = Math.max(0, state.addedM - solLimit);
+        const dissolved = Math.min(state.addedM, solLimit);
+        const crysMass = Math.max(0, totalSolidMass - state.initialGrainMass);
+
+        document.getElementById('curT').innerText = state.currentT.toFixed(1);
+        document.getElementById('tempReadout').innerText = state.currentT.toFixed(0) + "°C";
+        document.getElementById('curSol').innerText = solLimit.toFixed(1);
+        document.getElementById('curDiss').innerText = dissolved.toFixed(1);
+        document.getElementById('grainMassText').innerText = state.initialGrainMass.toFixed(1);
+        document.getElementById('crysMassText').innerText = crysMass.toFixed(1);
+
+        document.getElementById('water').style.background = `rgba(${173 + ((state.currentT - 25) * 1.09)}, ${216 - ((state.currentT - 25) * 1.33)}, ${230 - ((state.currentT - 25) * 2)}, 0.6)`;
+
+        const mx = mapX(state.currentT);
+        const my = mapY(solLimit);
+        document.getElementById('marker-group').setAttribute('transform', `translate(${mx}, ${my})`);
+        document.getElementById('guide-x').setAttribute('y2', 400 - my);
+
+        syncParticles(state.initialGrainMass, crysMass);
+    }
+
+    function syncParticles(gMass, cMass) {
+        const pBox = document.getElementById('particle-box');
+        const tg = Math.floor(gMass / 2);
+        const tc = Math.floor(cMass / 3);
+        const cg = pBox.querySelectorAll('.grain').length;
+        const cc = pBox.querySelectorAll('.crystal').length;
+
+        if (tg > cg) {
+            for(let i=0; i < (tg - cg); i++) {
+                const g = document.createElement('div');
+                g.className = 'grain';
+                g.style.left = (Math.random() * 95) + '%';
+                g.style.bottom = (Math.random() * 8) + 'px';
+                pBox.appendChild(g);
+            }
+        }
+        if (tc > cc) {
+            for(let i=0; i < (tc - cc); i++) {
+                const crys = document.createElement('div');
+                crys.className = 'crystal';
+                const size = 12 + Math.random() * 20;
+                crys.style.width = size + 'px'; crys.style.height = size + 'px';
+                const mode = Math.random();
+                if (mode < 0.3) { crys.style.left = '-8px'; crys.style.bottom = (Math.random() * 80) + '%'; }
+                else if (mode < 0.6) { crys.style.right = '-8px'; crys.style.bottom = (Math.random() * 80) + '%'; }
+                else { crys.style.bottom = (Math.random() * 10) + 'px'; crys.style.left = (Math.random() * 90) + '%'; }
+                crys.style.setProperty('--r', (Math.random() * 360) + 'deg');
+                pBox.appendChild(crys);
+            }
+        }
+    }
+</script>
+</body>
+</html>
